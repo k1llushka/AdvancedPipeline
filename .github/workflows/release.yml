@@ -1,0 +1,41 @@
+name: 🚀 Release Pipeline
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  create-release:
+    name: 🚀 Создание релиза
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Загружаем код
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Устанавливаем .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.x'
+
+    - name: 🔨 Собираем Release версию
+      run: |
+        dotnet restore src/AdvancedCalculator/
+        dotnet build src/AdvancedCalculator/ --configuration Release
+        dotnet publish src/AdvancedCalculator/ -c Release -o ./publish --self-contained false
+
+    - name: 📦 Создаем архив с бинарниками
+      run: |
+        zip -r calculator-v${{ github.ref_name }}.zip ./publish/*
+        mkdir -p artifacts
+        mv calculator-v${{ github.ref_name }}.zip artifacts/
+
+    - name: 📤 Загружаем артефакты в релиз
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./artifacts/calculator-v${{ github.ref_name }}.zip
+        asset_name: calculator-v${{ github.ref_name }}.zip
+        asset_content_type: application/zip

@@ -1,0 +1,160 @@
+name: Advanced CI Pipeline
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  DOTNET_VERSION: '8.x'
+  PROJECT_PATH: 'src/AdvancedCalculator'
+  TEST_PATH: 'tests/AdvancedCalculator.Tests'
+
+jobs:
+  # Джоба 1: Проверка кода и линтинг
+  code-quality:
+    name: 🔍 Качество кода
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Загружаем код
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Устанавливаем .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: 🧹 Проверяем стиль кода
+      run: |
+        dotnet format ${{ env.PROJECT_PATH }} --verify-no-changes --verbosity detailed
+        dotnet format ${{ env.TEST_PATH }} --verify-no-changes --verbosity detailed
+
+    - name: 🔎 Проверяем синтаксис
+      run: dotnet build --nologo --verbosity quiet
+
+  # Джоба 2: Сборка на разных ОС (матрица)
+  build:
+    name: 🔨 Сборка - ${{ matrix.os }}
+    needs: code-quality
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+    - name: 📥 Загружаем код
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Устанавливаем .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: 🔨 Собираем проект
+      run: |
+        dotnet restore ${{ env.PROJECT_PATH }}
+        dotnet build ${{ env.PROJECT_PATH }} --configuration Release
+
+    - name: 💾 Сохраняем артефакт сборки
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-${{ matrix.os }}
+        path: ${{ env.PROJECT_PATH }}/bin/Release/
+        retention-days: 7
+
+  # Джоба 3: Запуск тестов с покрытием
+  test:
+    name: 🧪 Тестирование
+    needs: code-quality
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Загружаем код
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Устанавливаем .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: 🧪 Запускаем тесты с покрытием
+      run: |
+        dotnet restore ${{ env.TEST_PATH }}
+        dotnet test ${{ env.TEST_PATH }} \
+          --logger "trx;LogFileName=test-results.trx" \
+          --collect:"XPlat Code Coverage" \
+          --results-directory ./TestResults \
+          --verbosity normal
+
+    - name: 📊 Публикуем результаты тестов
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: TestResults/
+        retention-days: 30
+
+    - name: 📈 Публикуем отчет о покрытии
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: ${{ env.TEST_PATH }}/**/coverage.cobertura.xml
+        retention-days: 30
+
+  # Джоба 4: Создание пакета
+  package:
+    name: 📦 Создание пакета
+    needs: [build, test]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Загружаем код
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Устанавливаем .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: 📦 Создаем NuGet пакет
+      run: |
+        dotnet restore ${{ env.PROJECT_PATH }}
+        dotnet pack ${{ env.PROJECT_PATH }} --configuration Release --output ./packages
+
+    - name: 💾 Сохраняем пакеты
+      uses: actions/upload-artifact@v4
+      with:
+        name: nuget-packages
+        path: ./packages/*.nupkg
+        retention-days: 30
+
+  # Джоба 5: Отчет о результатах
+  report:
+    name: 📊 Итоговый отчет
+    needs: [code-quality, build, test, package]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📝 Генерируем отчет
+      run: |
+        echo "🎉 CI Pipeline завершен успешно!"
+        echo "---"
+        echo "✅ Качество кода: Проверено"
+        echo "✅ Сборка: Выполнена на 3 ОС"
+        echo "✅ Тесты: Запущены с покрытием"
+        echo "✅ Пакет: Создан"
+        echo ""
+        echo "Время: $(date)"
+
+    - name: 🔍 Статус пайплана
+      if: always()
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "✅ Все джобы выполнены успешно!"
+        else
+          echo "❌ Некоторые джобы завершились с ошибкой"
+          exit 1
+        fi
