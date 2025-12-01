@@ -55,13 +55,10 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        include:
-          - os: ubuntu-latest
-            shell: bash
-          - os: windows-latest
-            shell: powershell
-          - os: macos-latest
-            shell: bash
+
+    defaults:
+      run:
+        shell: bash  # Используем bash везде, где возможно
 
     steps:
     - name: 📥 Загружаем код
@@ -81,10 +78,21 @@ jobs:
     - name: 📁 Проверяем результат сборки
       run: |
         echo "📁 Собранные файлы:"
-        if [ -d "${{ env.PROJECT_PATH }}/bin/Release/net8.0/" ]; then
-          ls -la ${{ env.PROJECT_PATH }}/bin/Release/net8.0/
+        # Для Windows используем PowerShell, для других - bash
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          # PowerShell команды для Windows
+          if (Test-Path "${{ env.PROJECT_PATH }}/bin/Release/net8.0/") {
+            Get-ChildItem "${{ env.PROJECT_PATH }}/bin/Release/net8.0/" | Format-Table
+          } else {
+            Write-Host "⚠️ Папка сборки не найдена"
+          }
         else
-          echo "⚠️ Папка сборки не найдена"
+          # Bash команды для Linux/Mac
+          if [ -d "${{ env.PROJECT_PATH }}/bin/Release/net8.0/" ]; then
+            ls -la "${{ env.PROJECT_PATH }}/bin/Release/net8.0/"
+          else
+            echo "⚠️ Папка сборки не найдена"
+          fi
         fi
 
     - name: 💾 Сохраняем артефакт сборки
